@@ -40,7 +40,7 @@ eval_only = False # if True, script exits right after the first eval
 always_save_checkpoint = True # if True, always save a checkpoint after each eval
 init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
 # wandb logging
-wandb_log = False # disabled by default
+wandb_log = True # enabled by default
 wandb_project = 'owt'
 wandb_run_name = 'gpt2' # 'run' + str(time.time())
 # data
@@ -282,8 +282,17 @@ while True:
                     'best_val_loss': best_val_loss,
                     'config': config,
                 }
+                
                 print(f"saving checkpoint to {out_dir}")
-                torch.save(checkpoint, os.path.join(out_dir, 'ckpt.pt'))
+                ckpt_file = os.path.join(out_dir, "ckpt.pt")
+                torch.save(checkpoint, ckpt_file)
+                if wandb_log:
+                    # save model to wandb as an Artifact
+                    artifact_name = f"{wandb.run.id}_model"
+                    at = wandb.Artifact(artifact_name, type="model", metadata=model_args)
+                    at.add_file(ckpt_file)
+                    wandb.log_artifact(at, aliases=[f"iter_num_{iter_num}"])
+
     if iter_num == 0 and eval_only:
         break
 
@@ -325,6 +334,11 @@ while True:
             mfu = raw_model.estimate_mfu(batch_size * gradient_accumulation_steps, dt)
             running_mfu = mfu if running_mfu == -1.0 else 0.9*running_mfu + 0.1*mfu
         print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
+        if wandb_log:
+            wandb.log({
+                "lossf": lossf,
+                "mfu": running_mfu*100, # convert to percentage
+            })
     iter_num += 1
     local_iter_num += 1
 
